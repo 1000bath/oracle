@@ -1,6 +1,6 @@
-# dek-oracle
+# 🕷️ spider-oracle
 
-Persona framework — encode an identity as searchable knowledge that AI agents can consult.
+Spider persona framework — encode Jonus's identity as searchable knowledge that AI agents can consult.
 
 ## How it works
 
