@@ -1,3 +1,11 @@
 export { Oracle } from "./oracle.js";
 export { PersonaRAG } from "./rag.js";
+export { SemanticSearch } from "./semantic-search.js";
+export { VectorIndex } from "./semantic-vector.js";
+export { buildEmbeddings, searchEmbeddings, tokenizeText } from "./embeddings.js";
+export { createFromTemplate, listTemplates } from "./templates.js";
+export { exportPersona, importPersona, validatePersona } from "./export-import.js";
+export { ConflictResolver } from "./conflict.js";
+export { PersonaUpdater } from "./auto-update.js";
+export type { EmbeddingIndex } from "./embeddings.js";
 export type { OracleOptions, ConsultResult, TasteResult, DecisionResult, SearchResult, PersonaFile } from "./types.js";

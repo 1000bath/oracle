@@ -1,7 +1,7 @@
 {
   "name": "dek-oracle",
-  "version": "0.1.0",
-  "description": "Persona framework \u2014 encode an identity as searchable knowledge that AI agents can consult",
+  "version": "0.2.0",
+  "description": "Persona framework — encode identity as searchable knowledge for AI agents",
   "type": "module",
   "license": "MIT",
   "engines": {
@@ -9,10 +9,14 @@
   },
   "exports": {
     ".": "./dist/index.js",
-    "./mcp": "./dist/mcp-server.js"
+    "./mcp": "./dist/mcp-server.js",
+    "./cli": "./dist/cli.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "oracle": "./dist/cli.js"
+  },
   "files": [
     "dist",
     "persona",
@@ -20,14 +24,16 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
-  "dependencies": {},
   "devDependencies": {
-    "@modelcontextprotocol/sdk": "^1.17.5",
-    "@types/node": "^26.0.0",
+    "@types/node": "^24.0.0",
     "typescript": "^6.0.0",
     "vitest": "^4.1.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "zod": "^3.25.23"
   }
 }
