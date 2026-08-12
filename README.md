@@ -55,6 +55,14 @@ const context = oracle.identity({ maxChars: 4000 });
 console.log(context.context, context.sources);
 ```
 
+To ask ChatGPT through the local `dek-gateway` bridge with Oracle context:
+
+```bash
+oracle ask "ควรเลือก SQLite หรือ PostgreSQL สำหรับโปรเจกต์นี้"
+```
+
+The command retrieves matching persona files, sends them as reference context to `chatgpt-web`, and returns the answer. Start `dek-gateway` first and keep the Dek AI Chrome extension connected. Durable `dek-memory` can be added by passing a `MemoryPort` to `createMcpServer`; the core Oracle CLI remains standalone.
+
 ## Memory metadata
 
 Persona JSON files remain backward compatible: existing files need no changes. New files may include a `metadata` object (the `_memory` alias is also accepted) alongside their content:

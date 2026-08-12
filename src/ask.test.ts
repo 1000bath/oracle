@@ -27,7 +27,20 @@ describe("buildPersonaPrompt", () => {
   });
 
   test("says plainly when retrieval found nothing", () => {
-    expect(buildPersonaPrompt("q", "   ")).toContain("(no persona data matched this question)");
+    expect(buildPersonaPrompt("q", "   ")).toContain("(nothing in the persona matched this question)");
+  });
+
+  test("tells the model to answer general questions even with an empty persona", () => {
+    // The first version answered *as* the person and withheld anything the
+    // persona did not cover, so "choose a database" came back as a refusal.
+    const prompt = buildPersonaPrompt("which database?", "");
+    expect(prompt).toMatch(/Never refuse merely because the persona block/);
+    expect(prompt).not.toMatch(/in their voice/);
+  });
+
+  test("keeps claims about the developer sourced to the persona", () => {
+    const prompt = buildPersonaPrompt("what am I working on?", "");
+    expect(prompt).toMatch(/must come from the persona block/);
   });
 });
 
@@ -45,7 +58,8 @@ describe("askWithPersona", () => {
     expect(result).toEqual({
       question: "which database?",
       answer: "Use SQLite.",
-      sources: ["taste/ui.json"]
+      sources: ["taste/ui.json"],
+      memorySources: []
     });
 
     const [url, init] = vi.mocked(fetchImpl).mock.calls[0]!;
@@ -58,6 +72,23 @@ describe("askWithPersona", () => {
     const body = JSON.parse(String(request.body)) as { model: string; messages: Array<{ content: string }> };
     expect(body.model).toBe("chatgpt-web");
     expect(body.messages[0]?.content).toContain("prefers local-first");
+  });
+
+  test("includes durable memory alongside persona context when configured", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({
+      choices: [{ message: { content: "Use the recorded choice." } }]
+    })) as unknown as typeof fetch;
+
+    await askWithPersona(fakeOracle("prefers local-first"), "which database?", {
+      memory: {
+        searchMemories: async () => [{ content: "SQLite is preferred for local tools", tags: ["database"] }],
+      },
+      fetchImpl,
+    });
+
+    const init = vi.mocked(fetchImpl).mock.calls[0]![1] as RequestInit;
+    expect(String(init.body)).toContain("<durable-memory>");
+    expect(String(init.body)).toContain("SQLite is preferred for local tools");
   });
 
   test("attaches a bearer token only when one is configured", async () => {

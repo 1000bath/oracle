@@ -2,7 +2,23 @@
 
 import { Oracle } from "./oracle.js";
 import { PersonaRAG } from "./rag.js";
+import { existsSync, mkdirSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+import { DatabaseSync } from "node:sqlite";
+import { join } from "node:path";
 import { exportPersona, importPersona, validatePersona } from "./export-import.js";
+import { askWithPersona, type OracleMemoryPort } from "./ask.js";
+
+async function loadMemoryBackend(rootDir: string): Promise<OracleMemoryPort | undefined> {
+  const memoryRoot = process.env.DEK_MEMORY_ROOT ?? join(rootDir, "memory");
+  const modulePath = join(memoryRoot, "dist", "adapter.js");
+  if (!existsSync(modulePath)) return undefined;
+  mkdirSync(join(rootDir, ".oracle-memory"), { recursive: true });
+  const { MemoryAdapter } = await import(pathToFileURL(modulePath).href);
+  const backend = new MemoryAdapter(rootDir);
+  backend.initWithDatabase(new DatabaseSync(join(rootDir, ".oracle-memory", "memory.db")));
+  return backend;
+}
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -19,13 +35,18 @@ Commands:
   init                     Create starter persona files to fill in
   search <query>           Search persona data
   consult <topic>          Consult persona about a topic
+  ask <question>           Ask ChatGPT using Oracle persona context
   taste <area>             Look up taste in an area
   decide <decision>        Consult decision algorithm
   stats                    Show persona statistics
+  doctor                   Check persona, gateway, and ChatGPT bridge
   list                     List all persona files
   export [file]            Export persona data to file
   import <file>            Import persona data from file
   validate                 Validate persona data integrity
+  memory add <text>        Store durable memory
+  memory search <query>   Search durable memory
+  memory list              List durable memories
 
 Options:
   --top <n>                Number of results (default: 5)
@@ -137,6 +158,56 @@ async function main() {
       break;
     }
 
+    case "ask": {
+      const question = args.slice(1).reduce<string[]>((parts, arg, index, all) => {
+        if (arg.startsWith("--") || all[index - 1] === "--format" || all[index - 1] === "--top") return parts;
+        parts.push(arg);
+        return parts;
+      }, []).join(" ");
+      if (!question) {
+        console.error("Error: ask requires a question");
+        process.exit(1);
+      }
+      try {
+        const result = await askWithPersona(oracle, question, {
+          memory: await loadMemoryBackend(process.cwd()),
+          ...(process.env.DEK_GATEWAY_URL ? { gatewayUrl: process.env.DEK_GATEWAY_URL } : {}),
+          ...(process.env.DEK_GATEWAY_MODEL ? { model: process.env.DEK_GATEWAY_MODEL } : {}),
+          ...(process.env.DEK_GATEWAY_KEY ? { apiKey: process.env.DEK_GATEWAY_KEY } : {}),
+        });
+        if (format === "json") console.log(JSON.stringify(result, null, 2));
+        else console.log(result.answer);
+      } catch (error) {
+        console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
+        process.exit(1);
+      }
+      break;
+    }
+
+    case "memory": {
+      const action = args[1];
+      const backend = await loadMemoryBackend(process.cwd());
+      if (!backend) { console.error("Memory backend unavailable. Set DEK_MEMORY_ROOT to the memory package."); process.exit(1); }
+      if (action === "add") {
+        const content = args.slice(2).filter((arg, index, all) => !arg.startsWith("--") && all[index - 1] !== "--format").join(" " );
+        if (!content) { console.error("Error: memory add requires text"); process.exit(1); }
+        if (!backend.remember) { console.error("Memory backend cannot write"); process.exit(1); }
+        const result = await backend.remember("oracle", "fact", content);
+        console.log(format === "json" ? JSON.stringify(result, null, 2) : JSON.stringify(result));
+      } else if (action === "search") {
+        const query = args.slice(2).filter((arg) => !arg.startsWith("--")).join(" " );
+        if (!query) { console.error("Error: memory search requires a query"); process.exit(1); }
+        const result = await backend.searchMemories(query, { limit: topK });
+        console.log(JSON.stringify(result, null, 2));
+      } else if (action === "list") {
+        if (!backend.recall) { console.error("Memory backend cannot recall"); process.exit(1); }
+        console.log(JSON.stringify(await backend.recall({ limit: topK, touch: false }), null, 2));
+      } else {
+        console.error("Usage: oracle memory add|search|list"); process.exit(1);
+      }
+      break;
+    }
+
     case "taste": {
       const area = args[1];
       if (!area) {
@@ -177,6 +248,33 @@ async function main() {
         console.log(`   Files: ${stats.files}`);
         console.log(`   Terms: ${stats.terms}`);
         console.log(`   Categories: ${stats.categories.join(", ")}`);
+      }
+      break;
+    }
+
+    case "doctor": {
+      const personaDir = PersonaRAG.defaultDir();
+      const gatewayUrl = (process.env.DEK_GATEWAY_URL ?? "http://127.0.0.1:8787").replace(/\/+$/, "");
+      const checks: Record<string, unknown> = {
+        persona: validatePersona(personaDir),
+        memory: existsSync(join(process.cwd(), ".oracle-memory")),
+        gateway: false,
+        chatgptBridge: false,
+      };
+      try {
+        const response = await fetch(`${gatewayUrl}/api/chatgpt-web/status`, { signal: AbortSignal.timeout(3_000) });
+        checks.gateway = response.ok;
+        if (response.ok) {
+          const status = await response.json() as { connected?: boolean };
+          checks.chatgptBridge = status.connected === true;
+        }
+      } catch { /* report unavailable in the result */ }
+      if (format === "json") console.log(JSON.stringify({ gatewayUrl, ...checks }, null, 2));
+      else {
+        console.log(`Persona: ${checks.persona && (checks.persona as { valid: boolean }).valid ? "OK" : "FAIL"}`);
+        console.log(`Memory: ${checks.memory ? "FOUND" : "NOT FOUND"}`);
+        console.log(`Gateway: ${checks.gateway ? "OK" : "UNAVAILABLE"}`);
+        console.log(`ChatGPT bridge: ${checks.chatgptBridge ? "CONNECTED" : "NOT CONNECTED"}`);
       }
       break;
     }

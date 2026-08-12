@@ -4,6 +4,7 @@ import { z } from "zod";
 import { Oracle } from "./oracle.js";
 import { PersonaRAG } from "./rag.js";
 import { addResources } from "./mcp-resources.js";
+import { askWithPersona } from "./ask.js";
 
 /** Structural subset of dek-memory's MemoryPort, kept optional so oracle remains standalone. */
 export interface OracleMemoryPort {
@@ -138,9 +139,11 @@ export function createMcpServer(dataDir?: string, options: McpServerOptions = {}
       const result = await askWithPersona(oracle, question, {
         ...(model ? { model } : {}),
         ...(gateway_url ? { gatewayUrl: gateway_url } : {}),
+        ...(options.memory ? { memory: options.memory } : {}),
       });
       const sources = result.sources.length ? `\n\n---\nPersona sources: ${result.sources.join(", ")}` : "";
-      return { content: [{ type: "text" as const, text: `${result.answer}${sources}` }] };
+      const memorySources = result.memorySources.length ? `\nDurable memory entries: ${result.memorySources.length}` : "";
+      return { content: [{ type: "text" as const, text: `${result.answer}${sources}${memorySources}` }] };
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       return {

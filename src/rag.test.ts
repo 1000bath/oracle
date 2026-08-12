@@ -1,12 +1,19 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { PersonaRAG } from "./rag.js";
 import { join } from "node:path";
-import { homedir } from "node:os";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 
-const dataDir = join(homedir(), ".oracleai");
+const dataDir = mkdtempSync(join(tmpdir(), "oracle-rag-"));
+let rag: PersonaRAG;
+beforeAll(() => {
+  writeFileSync(join(dataDir, "identity.json"), JSON.stringify({ name: "Ari", role: "TypeScript engineer", preferences: "dark mode UI" }));
+  writeFileSync(join(dataDir, "decisions.json"), JSON.stringify({ decision: "algorithm risk checks" }));
+  rag = new PersonaRAG(dataDir);
+});
+afterAll(() => rmSync(dataDir, { recursive: true, force: true }));
 
 describe("PersonaRAG", () => {
-  const rag = new PersonaRAG(dataDir);
 
   it("loads persona files from ~/.oracleai/", () => {
     const stats = rag.getStats();

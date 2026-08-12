@@ -181,7 +181,8 @@ export class ConflictResolver {
       // Find and update the file containing this field
       const parts = field.split(".");
       const fileName = parts[0] + ".json";
-      const filePath = join(this.dataDir, fileName);
+      const candidate = join(this.dataDir, fileName);
+      const filePath = existsSync(candidate) ? candidate : join(this.dataDir, "identity.json");
 
       if (existsSync(filePath)) {
         try {
