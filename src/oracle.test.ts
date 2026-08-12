@@ -22,8 +22,36 @@ describe("Oracle options", () => {
     expect(instance.consult("typescript").files).toHaveLength(1);
   });
 
+
+  it("explains consultations with source IDs and evidence", () => {
+    const result = oracle(2).explain("typescript");
+    expect(result.sourceIds).toEqual((result.evidence ?? []).map((item: import("./types.js").Evidence) => item.sourceId));
+    expect((result.evidence ?? []).length).toBeGreaterThan(0);
+    expect(result.confidence).toBeGreaterThanOrEqual(0);
+    expect(result.confidence).toBeLessThanOrEqual(1);
+  });
+
   it("clamps invalid and excessive topK values", () => {
     expect(oracle(0).search("typescript")).toHaveLength(1);
     expect(oracle(1000).search("typescript")).toHaveLength(2);
+  });
+});
+
+
+describe("identity context", () => {
+  it("returns bounded deterministic context and sources", () => {
+    const instance = oracle();
+    const result = instance.identityContext("typescript", { topK: 2, maxChars: 40 });
+    expect(result.context.length).toBeLessThanOrEqual(40);
+    expect(result.sources).toEqual(result.files.map((file) => file.path));
+    expect(result.truncated).toBe(true);
+    expect(instance.identityContext("typescript", { topK: 2, maxChars: 40 })).toEqual(result);
+  });
+
+  it("does not expose mutable cached arrays", () => {
+    const instance = oracle();
+    const first = instance.identityContext("typescript", { maxChars: 1000 });
+    first.sources.push("mutated");
+    expect(instance.identityContext("typescript", { maxChars: 1000 }).sources).not.toContain("mutated");
   });
 });

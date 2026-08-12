@@ -16,6 +16,7 @@ function printHelp() {
 Usage: oracle <command> [options]
 
 Commands:
+  init                     Create starter persona files to fill in
   search <query>           Search persona data
   consult <topic>          Consult persona about a topic
   taste <area>             Look up taste in an area
@@ -29,9 +30,14 @@ Commands:
 Options:
   --top <n>                Number of results (default: 5)
   --format <type>          Output format: text, json (default: text)
+  --template <name>        Template for init (default: developer)
+  --dir <path>             Persona directory (default: ~/.oracleai)
+  --list                   With init: show the available templates
   --help                   Show this help message
 
 Examples:
+  oracle init                        # start here: writes ~/.oracleai
+  oracle init --template minimal
   oracle search "TypeScript zero dependencies"
   oracle consult "choosing a database"
   oracle taste "ui"
@@ -63,6 +69,43 @@ async function main() {
   const topK = args.includes("--top") ? parseInt(args[args.indexOf("--top") + 1]) : 5;
 
   switch (command) {
+    case "init": {
+      const { PERSONA_TEMPLATES, createFromTemplate } = await import("./templates.js");
+
+      if (args.includes("--list")) {
+        for (const template of Object.values(PERSONA_TEMPLATES)) {
+          console.log(`${template.name.padEnd(10)} ${template.description}`);
+          console.log(`${" ".repeat(10)} ${Object.keys(template.files).join(", ")}\n`);
+        }
+        break;
+      }
+
+      const templateName = args.includes("--template") ? args[args.indexOf("--template") + 1] : "developer";
+      const targetDir = args.includes("--dir") ? args[args.indexOf("--dir") + 1] : PersonaRAG.defaultDir();
+      if (!templateName || !targetDir) {
+        console.error("Error: --template and --dir each need a value");
+        process.exit(1);
+      }
+
+      try {
+        // Existing files are left alone, so re-running after adding a template
+        // never overwrites what has already been written by hand.
+        const result = createFromTemplate(templateName, targetDir);
+        if (result.filesCreated === 0) {
+          console.log(`Nothing to create — every ${templateName} file already exists in ${targetDir}`);
+        } else {
+          console.log(`Created ${result.filesCreated} file(s) in ${result.targetDir}`);
+        }
+        console.log("\nThe values are placeholders. Edit them, then check with:");
+        console.log("  oracle stats");
+        console.log("  oracle consult \"choosing a database\"");
+      } catch (error) {
+        console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
+        process.exit(1);
+      }
+      break;
+    }
+
     case "search": {
       const query = args[1];
       if (!query) {

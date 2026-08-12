@@ -1,5 +1,5 @@
 import { writeFileSync, existsSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 export interface TemplateConfig {
   name: string;
@@ -112,7 +112,10 @@ export function createFromTemplate(
 
   for (const [fileName, data] of Object.entries(template.files)) {
     const filePath = join(targetDir, fileName);
-    const dir = filePath.substring(0, filePath.lastIndexOf("/"));
+    // `join` uses the platform separator, so scanning for "/" finds nothing on
+    // Windows and yields "" — which mkdir rejects, taking every nested
+    // template file with it.
+    const dir = dirname(filePath);
 
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });

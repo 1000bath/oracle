@@ -6,6 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import type { Interface } from "node:readline";
 import { Oracle } from "./oracle.js";
+import { consolidatePersona } from "./conflict.js";
 import { PersonaRAG } from "./rag.js";
 import {
   exportPersona,
@@ -49,6 +50,7 @@ const COMMAND_NAMES = [
   "export",
   "import",
   "validate",
+  "consolidate",
   "help",
   "clear",
   "exit",
@@ -241,6 +243,27 @@ const commands: Record<string, CommandDefinition> = {
       printSuccess(
         `Imported ${result.files} files (${result.added} added, ${result.updated} updated, ${result.skipped} skipped)`,
       );
+      return true;
+    },
+  },
+  consolidate: {
+    summary: "Preview or apply offline conflict consolidation",
+    usage: "consolidate [--strategy merge|latest|prefer-source|manual] [--max <n>] [--apply] [--format text|json]",
+    handler: (input, context) => {
+      const format = readFormatOption(input, context.format);
+      const strategy = readStrategyOption(input);
+      const maxConflicts = readNumberOption(input, "max", 100);
+      const result = consolidatePersona(context.personaDir, {
+        strategy,
+        maxConflicts,
+        apply: input.options.get("apply") === true,
+      });
+      if (format === "json") { printJson(result); return true; }
+      console.log(colors.bold(`Consolidation ${result.dryRun ? "preview" : "applied"}`));
+      console.log(`  Conflicts: ${result.conflicts.length}${result.truncated ? " (truncated)" : ""}`);
+      console.log(`  Resolved: ${result.resolved}`);
+      console.log(`  Manual: ${result.manual}`);
+      console.log(`  Files updated: ${result.applied}`);
       return true;
     },
   },
@@ -485,6 +508,9 @@ function completer(line: string): [string[], string] {
     "--top",
     "--persona-dir",
     "--on-conflict",
+    "--strategy",
+    "--max",
+    "--apply",
     "--interactive",
     "--help",
   ];
@@ -532,6 +558,15 @@ function readFormatOption(input: ParsedInput, fallback: OutputFormat): OutputFor
   if (value === undefined || value === true) return fallback;
   if (value !== "text" && value !== "json") {
     throw new Error("--format must be text or json");
+  }
+  return value;
+}
+
+function readStrategyOption(input: ParsedInput): import("./conflict.js").ResolutionStrategy {
+  const value = input.options.get("strategy");
+  if (value === undefined) return "merge";
+  if (value !== "latest" && value !== "merge" && value !== "prefer-source" && value !== "manual") {
+    throw new Error("--strategy must be latest, merge, prefer-source, or manual");
   }
   return value;
 }

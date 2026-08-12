@@ -17,6 +17,53 @@ export interface ConflictResolution {
   manual: number;
 }
 
+/** Options for the bounded, offline consolidation helper. */
+export interface ConsolidationOptions {
+  /** Resolution policy used when applying resolutions (default: "merge"). */
+  strategy?: ResolutionStrategy;
+  /** Never inspect more than this many conflicts (default: 100). */
+  maxConflicts?: number;
+  /** Write resolutions to disk. Defaults to false (preview only). */
+  apply?: boolean;
+}
+
+export interface ConsolidationResult extends ConflictResolution {
+  applied: number;
+  dryRun: boolean;
+  truncated: boolean;
+}
+
+/**
+ * Scan and optionally consolidate conflicts without network or model calls.
+ * This is deliberately a preview by default; callers must opt in to writes.
+ */
+export function consolidatePersona(
+  dataDir: string,
+  options: ConsolidationOptions = {},
+): ConsolidationResult {
+  const strategy = options.strategy ?? "merge";
+  const maxConflicts = Number.isFinite(options.maxConflicts)
+    ? Math.max(1, Math.trunc(options.maxConflicts!))
+    : 100;
+  const resolver = new ConflictResolver(dataDir);
+  const all = resolver.scanConflicts();
+  const conflicts = all.slice(0, maxConflicts);
+  const resolution = resolver.autoResolve(conflicts, strategy);
+  const resolutions = new Map<string, unknown>();
+  for (const conflict of conflicts) {
+    if (conflict.resolution !== undefined) resolutions.set(conflict.field, conflict.resolution);
+  }
+  const applied = options.apply === true ? resolver.applyResolutions(resolutions) : 0;
+  return {
+    ...resolution,
+    conflicts,
+    applied,
+    dryRun: options.apply !== true,
+    truncated: all.length > conflicts.length,
+  };
+}
+
+
 export type ResolutionStrategy = "latest" | "merge" | "prefer-source" | "manual";
 
 /**

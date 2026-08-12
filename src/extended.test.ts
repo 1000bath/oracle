@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { ConflictResolver } from "./conflict.js";
+import { ConflictResolver, consolidatePersona } from "./conflict.js";
 import { exportPersona, importPersona, validatePersona } from "./export-import.js";
 import { PersonaRAG } from "./rag.js";
 import { SemanticSearch } from "./semantic-search.js";
@@ -98,6 +98,21 @@ describe("semantic search", () => {
     const [result] = index.search("accessible dark controls");
 
     expect(result.file.path).toBe("taste/ui.json");
+  });
+
+  it("loads optional memory metadata while preserving legacy file shape", () => {
+    const dir = tempDir();
+    writeJson(join(dir, "episode.json"), {
+      metadata: { type: "episodic", confidence: 0.8, version: 2, supersedes: "old.json", validFrom: "2024-01-01T00:00:00Z" },
+      title: "Deploy", content: "deployed the service"
+    });
+    writeJson(join(dir, "legacy.json"), { title: "Legacy", content: "old memory" });
+    const files = new PersonaRAG(dir).getAll();
+    const episode = files.find((file) => file.path === "episode.json");
+    const legacy = files.find((file) => file.path === "legacy.json");
+    expect(episode?.metadata).toEqual({ type: "episodic", confidence: 0.8, version: 2, supersedes: "old.json", validFrom: "2024-01-01T00:00:00Z" });
+    expect(episode?.content).not.toContain("episodic");
+    expect(legacy?.metadata).toBeUndefined();
   });
 
   it("PersonaRAG searches JSON content from a temp persona directory", () => {
@@ -210,6 +225,29 @@ describe("export/import", () => {
     });
 
     expect(() => importPersona(input, tempDir())).toThrow(/Invalid file path/);
+  });
+});
+
+describe("offline consolidation", () => {
+  it("previews bounded merge resolutions without writing", () => {
+    const dir = tempDir();
+    writeJson(join(dir, "identity.json"), { style: "calm" });
+    writeJson(join(dir, "taste.json"), { style: "minimal" });
+    const result = consolidatePersona(dir, { maxConflicts: 1 });
+    expect(result.dryRun).toBe(true);
+    expect(result.resolved).toBe(1);
+    expect(result.applied).toBe(0);
+    expect(readJson<{ style: string }>(join(dir, "identity.json")).style).toBe("calm");
+  });
+
+  it("applies only when explicitly requested", () => {
+    const dir = tempDir();
+    writeJson(join(dir, "identity.json"), { style: "calm" });
+    writeJson(join(dir, "taste.json"), { style: "minimal" });
+    const result = consolidatePersona(dir, { strategy: "prefer-source", apply: true });
+    expect(result.dryRun).toBe(false);
+    expect(result.applied).toBe(1);
+    expect(readJson<{ style: string }>(join(dir, "identity.json")).style).toBe("calm");
   });
 });
 

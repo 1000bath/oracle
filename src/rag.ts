@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join, relative, extname } from "node:path";
 import { homedir } from "node:os";
-import type { PersonaFile, SearchResult } from "./types.js";
+import type { MemoryMetadata, MemoryType, PersonaFile, SearchResult } from "./types.js";
 
 /**
  * Persona RAG — searches JSON knowledge files from ~/.oracleai/
@@ -35,13 +35,38 @@ export class PersonaRAG {
             const data = JSON.parse(raw);
             const relPath = relative(dir, full);
             const title = this.extractTitle(data, relPath);
-            const content = this.flattenJson(data);
-            this.files.push({ path: relPath, category, title, content });
+            const metadata = this.extractMetadata(data);
+            const content = this.flattenJson(this.withoutMetadata(data));
+            this.files.push({ path: relPath, category, title, content, ...(metadata ? { metadata } : {}) });
           } catch { /* skip malformed */ }
         }
       }
     };
     walk(dir, "root");
+  }
+
+  /** Read the optional metadata envelope without changing legacy JSON files. */
+  private extractMetadata(data: unknown): MemoryMetadata | undefined {
+    if (typeof data !== "object" || data === null || Array.isArray(data)) return undefined;
+    const value = (data as Record<string, unknown>).metadata ?? (data as Record<string, unknown>)._memory;
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+    const raw = value as Record<string, unknown>;
+    const result: MemoryMetadata = {};
+    if (["episodic", "semantic", "procedural", "conversational"].includes(String(raw.type))) result.type = raw.type as MemoryType;
+    if (typeof raw.confidence === "number" && Number.isFinite(raw.confidence) && raw.confidence >= 0 && raw.confidence <= 1) result.confidence = raw.confidence;
+    if (typeof raw.version === "number" && Number.isInteger(raw.version) && raw.version >= 0) result.version = raw.version;
+    if (typeof raw.supersedes === "string" || (Array.isArray(raw.supersedes) && raw.supersedes.every((v) => typeof v === "string"))) result.supersedes = raw.supersedes as string | string[];
+    if (typeof raw.validFrom === "string") result.validFrom = raw.validFrom;
+    if (typeof raw.validUntil === "string") result.validUntil = raw.validUntil;
+    return Object.keys(result).length ? result : undefined;
+  }
+
+  private withoutMetadata(data: unknown): unknown {
+    if (typeof data !== "object" || data === null || Array.isArray(data)) return data;
+    const copy = { ...(data as Record<string, unknown>) };
+    delete copy.metadata;
+    delete copy._memory;
+    return copy;
   }
 
   private extractTitle(data: unknown, fallback: string): string {
@@ -105,6 +130,8 @@ export class PersonaRAG {
         file: this.files[idx],
         score,
         excerpt: this.excerpt(this.files[idx].content, terms),
+        sourceId: this.files[idx].path,
+        confidence: confidence(score, scores),
       }));
   }
 
@@ -129,4 +156,10 @@ export class PersonaRAG {
       categories: [...new Set(this.files.map((f) => f.category))],
     };
   }
+}
+
+function confidence(score: number, scores: Map<number, number>): number {
+  const values = [...scores.values()];
+  const max = Math.max(...values, 0);
+  return max > 0 ? Math.max(0, Math.min(1, score / max)) : 0;
 }

@@ -45,7 +45,35 @@ console.log(decision.analysis);
 
 // Search all persona data
 const hits = oracle.search("TypeScript zero dependencies");
+
+// Explain retrieval with confidence and exact supporting excerpts
+const explanation = oracle.explain("choosing a database");
+console.log(explanation.confidence, explanation.evidence);
+
+// Small, cacheable persona context for prompts (bounded by character count)
+const context = oracle.identity({ maxChars: 4000 });
+console.log(context.context, context.sources);
 ```
+
+## Memory metadata
+
+Persona JSON files remain backward compatible: existing files need no changes. New files may include a `metadata` object (the `_memory` alias is also accepted) alongside their content:
+
+```json
+{
+  "metadata": {
+    "type": "episodic",
+    "confidence": 0.8,
+    "version": 2,
+    "supersedes": "decisions/old.json",
+    "validFrom": "2024-01-01T00:00:00Z",
+    "validUntil": "2025-01-01T00:00:00Z"
+  },
+  "event": "Launched the service"
+}
+```
+
+`type` is one of `episodic`, `semantic`, `procedural`, or `conversational`; confidence is between 0 and 1. Versions and supersession identifiers support revision tracking, while valid times describe when a memory applies. Metadata is exposed as `PersonaFile.metadata` and is excluded from searchable content. Invalid or unknown metadata fields are ignored, and legacy files continue to have `metadata` absent.
 
 ## Use as MCP server
 
@@ -55,10 +83,22 @@ npx dek-oracle
 # or import from dek-oracle/mcp
 ```
 
+### Offline maintenance
+
+Use the enhanced CLI to inspect conflicting fields without network or model calls:
+
+```bash
+oracle-enhanced consolidate --strategy merge --max 100 --format json
+oracle-enhanced consolidate --strategy prefer-source --apply
+```
+
+Consolidation is a dry-run by default and is bounded by `--max`; `--apply` is required to write changes.
+
 ### MCP Tools
 - `oracle_consult` — Ask how Jonus would think about a topic
 - `oracle_taste` — Look up preferences in a specific area
 - `oracle_decide` — Consult decision algorithm
+- `oracle_explain` — Explain a topic with confidence and supporting evidence
 - `oracle_search` — Full-text search across all persona data
 - `oracle_stats` — Show database stats
 
