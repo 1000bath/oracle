@@ -26,15 +26,17 @@ import type { OracleOptions, ConsultResult, TasteResult, DecisionResult, SearchR
  */
 export class Oracle {
   private rag: PersonaRAG;
+  private readonly defaultTopK: number;
 
   constructor(options?: OracleOptions) {
     const dir = options?.personaDir ?? PersonaRAG.defaultDir();
     this.rag = new PersonaRAG(dir);
+    this.defaultTopK = normalizeTopK(options?.topK ?? 5);
   }
 
   consult(topic: string, context?: string): ConsultResult {
     const query = context ? `${topic} ${context}` : topic;
-    const results = this.rag.search(query, 5);
+    const results = this.rag.search(query, this.defaultTopK);
     return {
       topic,
       answer: results.map((r) => `[${r.file.path}] ${r.excerpt}`).join("\n\n"),
@@ -44,7 +46,7 @@ export class Oracle {
   }
 
   taste(area: string): TasteResult {
-    const results = this.rag.search(`taste ${area}`, 3);
+    const results = this.rag.search(`taste ${area}`, Math.min(this.defaultTopK, 3));
     return {
       area,
       preferences: results.map((r) => r.excerpt).join("\n\n"),
@@ -54,7 +56,7 @@ export class Oracle {
 
   decide(decision: string, options?: string[]): DecisionResult {
     const query = `decision ${decision} ${options?.join(" ") ?? ""}`;
-    const results = this.rag.search(query, 3);
+    const results = this.rag.search(query, Math.min(this.defaultTopK, 3));
     return {
       decision,
       analysis: results.map((r) => `### ${r.file.title}\n${r.excerpt}`).join("\n\n"),
@@ -63,9 +65,15 @@ export class Oracle {
   }
 
   search(query: string, topK?: number): SearchResult[] {
-    return this.rag.search(query, topK ?? 5);
+    return this.rag.search(query, normalizeTopK(topK ?? this.defaultTopK));
   }
 
   stats() { return this.rag.getStats(); }
   files() { return this.rag.getAll(); }
+}
+
+
+function normalizeTopK(value: number): number {
+  if (!Number.isFinite(value)) return 5;
+  return Math.max(1, Math.min(100, Math.trunc(value)));
 }
