@@ -102,6 +102,10 @@ Consolidation is a dry-run by default and is bounded by `--max`; `--apply` is re
 - `oracle_search` — Full-text search across all persona data
 - `oracle_stats` — Show database stats
 
+### Optional memory tools
+
+`createMcpServer(dataDir, { memory })` accepts a structural `dek-memory` `MemoryPort` backend. When configured, the server exposes `memory_context`, `memory_search`, `memory_remember`, `memory_recall`, and `memory_explain` (graph reachability). The backend is optional so the Oracle package remains dependency-free and existing MCP clients/tools remain compatible; without it, memory calls return an explicit error.
+
 ## Data format
 
 All persona data lives in `~/.oracleai/` as JSON files:
@@ -118,3 +122,18 @@ See the included examples for the full schema.
 ## Zero runtime dependencies
 
 The core library has no dependencies. MCP SDK is only needed for the MCP server.
+
+
+## Governance and safe forgetting
+
+Governance helpers are available from the package root. `forgetPersona` is a dry run by
+ default; pass `{ apply: true }` to remove matching dotted fields. Applying always creates a validated export before any write; provide
+`backupFile` to control its path. `auditPersona` combines persona
+validation with a bounded, read-only conflict report, while `governConflicts` wraps the
+existing offline conflict consolidation API.
+
+```ts
+const preview = forgetPersona(dir, ["contact.email"]);
+const audit = auditPersona(dir, { maxConflicts: 50 });
+forgetPersona(dir, ["contact.email"], { apply: true, backupFile: "before-forget.json" });
+```

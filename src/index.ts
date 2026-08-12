@@ -9,3 +9,6 @@ export { ConflictResolver, consolidatePersona } from "./conflict.js";
 export { PersonaUpdater } from "./auto-update.js";
 export type { EmbeddingIndex } from "./embeddings.js";
 export type { OracleOptions, ConsultResult, TasteResult, DecisionResult, ExplainResult, Evidence, SearchResult, PersonaFile, IdentityContextOptions, IdentityContextResult } from "./types.js";
+
+export { forgetPersona, auditPersona, governConflicts } from "./governance.js";
+export type { ForgetOptions, ForgetChange, ForgetResult, AuditOptions, GovernanceAudit } from "./governance.js";

@@ -5,7 +5,23 @@ import { Oracle } from "./oracle.js";
 import { PersonaRAG } from "./rag.js";
 import { addResources } from "./mcp-resources.js";
 
-export function createMcpServer(dataDir?: string) {
+/** Structural subset of dek-memory's MemoryPort, kept optional so oracle remains standalone. */
+export interface OracleMemoryPort {
+  remember(agent: string, type: string, content: string, opts?: { tags?: string[]; meta?: Record<string, unknown>; importance?: number }): Promise<unknown>;
+  recall(opts?: { type?: string; agent?: string; tags?: string[]; limit?: number; includeArchived?: boolean; includeStale?: boolean }): Promise<unknown[]>;
+  searchMemories(query: string, opts?: { type?: string; agent?: string; limit?: number; includeStale?: boolean }): Promise<unknown[]>;
+  graphWhy?(memoryId: string, question: string): Promise<{ reachable: boolean; paths: Array<Array<{ from: string; relation: string; to: string }>>; entities: string[] }>;
+}
+
+export interface McpServerOptions {
+  memory?: OracleMemoryPort;
+}
+
+function memoryText(value: unknown): string {
+  return typeof value === "string" ? value : JSON.stringify(value, null, 2);
+}
+
+export function createMcpServer(dataDir?: string, options: McpServerOptions = {}) {
   const dir = dataDir ?? PersonaRAG.defaultDir();
   const oracle = new Oracle({ personaDir: dir });
   const stats = oracle.stats();
@@ -15,6 +31,56 @@ export function createMcpServer(dataDir?: string) {
 
   // Add resources
   addResources(server, oracle);
+
+  // Optional memory tools. They are registered even without a memory backend so
+  // clients can discover a stable protocol; calls fail explicitly rather than
+  // silently mixing persona files and durable memory.
+  const requireMemory = (): OracleMemoryPort => {
+    if (!options.memory) throw new Error("Memory backend is not configured");
+    return options.memory;
+  };
+  server.tool("memory_context", "Build a compact persona context for a query", {
+    query: z.string().default("identity"),
+    top_k: z.number().int().min(1).max(100).optional(),
+    max_chars: z.number().int().min(1).max(100000).optional(),
+  }, async ({ query, top_k, max_chars }) => {
+    const r = oracle.identityContext(query, { ...(top_k === undefined ? {} : { topK: top_k }), ...(max_chars === undefined ? {} : { maxChars: max_chars }) });
+    return { content: [{ type: "text" as const, text: JSON.stringify(r) }] };
+  });
+  server.tool("memory_search", "Search durable memories", {
+    query: z.string(), type: z.string().optional(), agent: z.string().optional(), limit: z.number().int().min(1).max(100).optional(),
+  }, async ({ query, type, agent, limit }) => {
+    try {
+      const results = await requireMemory().searchMemories(query, { ...(type ? { type } : {}), ...(agent ? { agent } : {}), ...(limit === undefined ? {} : { limit }) });
+      return { content: [{ type: "text" as const, text: memoryText(results) }] };
+    } catch (error) { return { content: [{ type: "text" as const, text: String(error) }], isError: true }; }
+  });
+  server.tool("memory_remember", "Store a durable memory", {
+    agent: z.string().default("oracle"), type: z.string().default("fact"), content: z.string(), tags: z.array(z.string()).optional(), importance: z.number().min(0).max(1).optional(),
+  }, async ({ agent, type, content, tags, importance }) => {
+    try {
+      const result = await requireMemory().remember(agent, type, content, { ...(tags ? { tags } : {}), ...(importance === undefined ? {} : { importance }) });
+      return { content: [{ type: "text" as const, text: memoryText(result) }] };
+    } catch (error) { return { content: [{ type: "text" as const, text: String(error) }], isError: true }; }
+  });
+  server.tool("memory_recall", "Recall durable memories", {
+    type: z.string().optional(), agent: z.string().optional(), tags: z.array(z.string()).optional(), limit: z.number().int().min(1).max(100).optional(), include_archived: z.boolean().optional(), include_stale: z.boolean().optional(),
+  }, async ({ type, agent, tags, limit, include_archived, include_stale }) => {
+    try {
+      const result = await requireMemory().recall({ ...(type ? { type } : {}), ...(agent ? { agent } : {}), ...(tags ? { tags } : {}), ...(limit === undefined ? {} : { limit }), ...(include_archived === undefined ? {} : { includeArchived: include_archived }), ...(include_stale === undefined ? {} : { includeStale: include_stale }) });
+      return { content: [{ type: "text" as const, text: memoryText(result) }] };
+    } catch (error) { return { content: [{ type: "text" as const, text: String(error) }], isError: true }; }
+  });
+  server.tool("memory_explain", "Explain graph reachability for a memory", {
+    memory_id: z.string(), question: z.string(),
+  }, async ({ memory_id, question }) => {
+    try {
+      const backend = requireMemory();
+      if (!backend.graphWhy) throw new Error("Memory backend does not support graph explanations");
+      const result = await backend.graphWhy(memory_id, question);
+      return { content: [{ type: "text" as const, text: memoryText(result) }] };
+    } catch (error) { return { content: [{ type: "text" as const, text: String(error) }], isError: true }; }
+  });
 
   // Tools
   server.tool("oracle_consult", "Consult persona about a topic", {
@@ -82,6 +148,14 @@ export function createMcpServer(dataDir?: string) {
         isError: true,
       };
     }
+  });
+
+  // Documented in the README as part of the tool set. Cheap and read-only, and
+  // the first thing worth checking when retrieval comes back empty: an answer
+  // with no sources usually means an empty persona directory, not a bad query.
+  server.tool("oracle_stats", "Show persona database statistics", {}, async () => {
+    const current = oracle.stats();
+    return { content: [{ type: "text" as const, text: JSON.stringify({ dir, ...current }, null, 2) }] };
   });
 
   server.tool("oracle_validate", "Validate persona data integrity", {}, async () => {
