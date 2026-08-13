@@ -13,7 +13,7 @@ Spider persona framework — encode Jonus's identity as searchable knowledge tha
     decisions/
     psychology/
         ↓
-    dek-oracle         ← RAG engine + MCP server
+    mantic         ← RAG engine + MCP server
         ↓
     AI agents          ← Claude Code, OpenCode, Codex
 ```
@@ -21,13 +21,13 @@ Spider persona framework — encode Jonus's identity as searchable knowledge tha
 ## Install
 
 ```bash
-npm install dek-oracle
+npm install mantic
 ```
 
 ## Use from code
 
 ```ts
-import { Oracle } from "dek-oracle";
+import { Oracle } from "mantic";
 
 const oracle = new Oracle();
 
@@ -87,8 +87,8 @@ Persona JSON files remain backward compatible: existing files need no changes. N
 
 ```bash
 # Add to your MCP config
-npx dek-oracle
-# or import from dek-oracle/mcp
+npx mantic
+# or import from mantic/mcp
 ```
 
 ### Offline maintenance

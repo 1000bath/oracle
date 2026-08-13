@@ -1,5 +1,5 @@
 {
-  "name": "dek-oracle",
+  "name": "mantic",
   "version": "0.2.0",
   "description": "Persona framework — encode identity as searchable knowledge for AI agents",
   "type": "module",
@@ -15,17 +15,18 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "oracle": "./dist/cli.js"
+    "mantic": "./dist/cli.js"
   },
   "files": [
     "dist",
-    "persona",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepublishOnly": "npm run build && npm test"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
@@ -35,5 +36,16 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
     "zod": "^3.25.23"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/1000bath/mantic.git"
+  },
+  "homepage": "https://github.com/1000bath/mantic#readme",
+  "bugs": {
+    "url": "https://github.com/1000bath/mantic/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -10,7 +10,7 @@ import type { OracleOptions, ConsultResult, TasteResult, DecisionResult, Explain
  *
  * @example
  * ```ts
- * import { Oracle } from "dek-oracle";
+ * import { Oracle } from "mantic";
  *
  * const oracle = new Oracle();
  *
